@@ -3,12 +3,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from models.file import File as FileModel
 from schemas.file import File as FileSchema, PaginatedFiles
 from utils.file_handling import validate_file_type, save_upload_file
 from config import SessionLocal
+from services.embeddings import EmbeddingsService
 
 
 def get_db():
@@ -22,8 +23,23 @@ def get_db():
 router = APIRouter(prefix="/files", tags=["files"])
 
 # Configure upload settings
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "application/pdf", "text/plain"]
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+ALLOWED_MIME_TYPES = [
+    # Images
+    "image/jpeg", "image/png", "image/gif", "image/svg+xml", "image/webp",
+    # Documents
+    "application/pdf", "text/plain",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    # Archives
+    "application/zip", "application/x-rar-compressed", "application/x-tar", "application/x-7z-compressed",
+    # Code
+    "text/x-python", "application/json", "text/xml", "text/html", "text/css", "application/javascript"
+]
 
 
 @router.post("/upload")
@@ -149,6 +165,7 @@ def search_files(
     q: str = Query(..., description="Search query for file name or content"),
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=100),
+    semantic: bool = Query(False, description="Use semantic search"),
     db: Session = Depends(get_db),
 ):
     """
@@ -164,9 +181,17 @@ def search_files(
         Paginated list of matching files with metadata
     """
     try:
-        query = db.query(FileModel).filter(FileModel.name.ilike(f"%{q}%"))
+        if semantic:
+            embeddings_service = EmbeddingsService(db)
+            semantic_results = embeddings_service.semantic_search(q, k=per_page)
+            file_ids = [result["file_id"] for result in semantic_results]
+            
+            query = db.query(FileModel).filter(FileModel.id.in_(file_ids))
+            total = len(file_ids)
+        else:
+            query = db.query(FileModel).filter(FileModel.name.ilike(f"%{q}%"))
+            total = query.count()
 
-        total = query.count()
         offset = (page - 1) * per_page
         files = query.offset(offset).limit(per_page).all()
 
@@ -201,3 +226,99 @@ def get_file(file_id: int, db: Session = Depends(get_db)):
     if not file:
         raise HTTPException(status_code=404, detail=f"File with ID {file_id} not found")
     return file
+
+
+@router.post("/embeddings/generate")
+def generate_embeddings(
+    file_ids: List[int] = Query(None, description="List of file IDs to generate embeddings for"),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate embeddings for files
+    """
+    try:
+        embeddings_service = EmbeddingsService(db)
+        
+        if not file_ids:
+            # Get all files without embeddings
+            files = db.query(FileModel).filter(FileModel.has_embeddings == False).all()
+            file_ids = [f.id for f in files]
+
+        # In a real implementation, this would be a Celery task
+        for file_id in file_ids:
+            file = db.query(FileModel).filter(FileModel.id == file_id).first()
+            if file and file.extracted_content:
+                embeddings_service.store_embedding(
+                    file_id=file.id,
+                    embedding=embeddings_service.generate_embedding(file.extracted_content.content)
+                )
+                file.has_embeddings = True
+                db.commit()
+
+        return {"message": f"Started generating embeddings for {len(file_ids)} files"}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
+
+
+@router.get("/semantic/similar/{file_id}")
+def find_similar_files(
+    file_id: int,
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """
+    Find semantically similar files
+    """
+    try:
+        embeddings_service = EmbeddingsService(db)
+        similar_files = embeddings_service.semantic_search(file_id, k=limit)
+        
+        return {
+            "file_id": file_id,
+            "similar_files": similar_files,
+            "count": len(similar_files)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error finding similar files: {str(e)}")
+
+
+@router.delete("/{file_id}")
+def delete_file(file_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a file and its metadata
+
+    Args:
+        file_id: ID of the file to delete
+        db: Database session
+
+    Returns:
+        Success message if deleted
+
+    Raises:
+        HTTPException: 404 if file not found
+        HTTPException: 500 if deletion fails
+    """
+    file = db.query(FileModel).filter(FileModel.id == file_id).first()
+    if not file:
+        raise HTTPException(status_code=404, detail=f"File with ID {file_id} not found")
+
+    try:
+        # Delete physical file
+        file_path = Path(file.path)
+        if file_path.exists():
+            file_path.unlink()
+
+        # Delete database record
+        db.delete(file)
+        db.commit()
+
+        return {"message": f"File {file_id} deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error deleting file {file_id}: {str(e)}"
+        )

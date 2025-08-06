@@ -16,6 +16,7 @@ from models.content_extraction import (
 )
 from routers.files import router as files_router
 from routers.content_extraction import router as content_extraction_router
+from routers.similarity import router as similarity_router
 from security.middleware import APIKeyAuthMiddleware
 
 # Configure logger
@@ -91,6 +92,7 @@ def get_db():
 # Include routers
 app.include_router(files_router)
 app.include_router(content_extraction_router)
+app.include_router(similarity_router)
 
 
 @app.get("/health")

@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import FilesPage from './pages/FilesPage';
 import UploadPage from './pages/UploadPage';
 import SearchPage from './pages/SearchPage';
+import TagManagementScreen from './pages/TagManagementScreen';
 
 function App() {
   return (
@@ -84,9 +85,9 @@ function App() {
                   }}>
                     📤 Upload
                   </Link>
-                  <Link to="/search" style={{ 
-                    color: '#6b7280', 
-                    textDecoration: 'none', 
+                  <Link to="/search" style={{
+                    color: '#6b7280',
+                    textDecoration: 'none',
                     padding: '8px 16px',
                     borderRadius: '6px',
                     fontSize: '14px',
@@ -94,6 +95,17 @@ function App() {
                     transition: 'all 0.2s'
                   }}>
                     🔍 Search
+                  </Link>
+                  <Link to="/tags" style={{
+                    color: '#6b7280',
+                    textDecoration: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s'
+                  }}>
+                    🏷️ Tags
                   </Link>
                 </div>
               </div>
@@ -107,6 +119,7 @@ function App() {
               <Route path="/files" element={<FilesPage />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/search" element={<SearchPage />} />
+              <Route path="/tags" element={<TagManagementScreen />} />
             </Routes>
           </main>
 

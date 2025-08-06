@@ -1,0 +1,39 @@
+# Auto-tagging service
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY fastapi-app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+# Install PyTorch CPU-only first (smaller download)
+RUN pip install --no-cache-dir \
+    torch==2.0.1+cpu \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Then install other dependencies
+RUN pip install --no-cache-dir \
+    spacy \
+    transformers \
+    fastapi \
+    uvicorn \
+    --default-timeout=100
+
+# Download Spacy model
+RUN python -m spacy download en_core_web_lg
+
+# Copy service code
+COPY fastapi-app/services/auto_tagging.py /app/services/
+COPY fastapi-app/routers/ai_processing.py /app/routers/
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+CMD ["uvicorn", "services.auto_tagging:app", "--host", "0.0.0.0", "--port", "8001"]

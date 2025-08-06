@@ -1,0 +1,31 @@
+# AI Summarization service
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY fastapi-app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    transformers \
+    fastapi \
+    uvicorn
+
+# Install Llama model
+RUN pip install --no-cache-dir llama-cpp-python
+
+# Copy service code
+COPY fastapi-app/services/ai_summarization.py /app/services/
+COPY fastapi-app/routers/ai_processing.py /app/routers/
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8002/health || exit 1
+
+CMD ["uvicorn", "services.ai_summarization:app", "--host", "0.0.0.0", "--port", "8002"]

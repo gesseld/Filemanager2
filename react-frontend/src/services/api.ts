@@ -1,122 +1,127 @@
-import axios, {
-  AxiosInstance,
-  InternalAxiosRequestConfig,
-  AxiosResponse,
-  AxiosError,
-  AxiosHeaders,
-} from 'axios';
-import { FileItem } from '../types/file';
+import axios from 'axios';
 import {
-  SearchResponse,
-  SearchRequest,
-  ExtractedContent,
-  ExtractionTask,
-  ContentExtractionRequest,
-  ProcessingStatus,
+  AITag,
+  AISummary,
+  SearchResult,
+  ProcessingStatus
 } from '../types/content-extraction';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'http://localhost:8000'
-    : 'http://backend:8000');
+interface QueueStatus {
+  active: Record<string, any[]>;
+  reserved: Record<string, any[]>;
+  scheduled: Record<string, any[]>;
+  stats: Record<string, any>;
+  registered_tasks: Record<string, string[]>;
+}
 
-const api: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-// Request interceptor for adding auth token
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers = new AxiosHeaders(config.headers);
-    config.headers.set('Authorization', `Bearer ${token}`);
-  }
-  return config;
-});
+interface SimilarDocument {
+  file_id: string;
+  file_name: string;
+  similarity_score: number;
+  metadata?: Record<string, unknown>;
+}
 
-// Response interceptor for error handling
-api.interceptors.response.use(
-  (response: AxiosResponse) => response,
-  (error: AxiosError) => {
-    if (error.response) {
-      console.error('API Error:', error.response.data);
-    } else {
-      console.error('Network Error:', error.message);
-    }
-    return Promise.reject(error);
-  },
-);
+// Create a more flexible type for tag creation that matches the backend expectations
+interface TagCreationData {
+  tag: string;
+  file_id?: string;
+  source?: string;
+  confidence?: number;
+}
 
-export const uploadFile = async (file: File): Promise<FileItem> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await api.post('/files/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+// Similarity API functions
+export const getSimilarityMatrix = async (threshold: number = 0.5): Promise<Record<string, SimilarDocument[]>> => {
+  const response = await axios.get(`${API_BASE_URL}/api/similarity/matrix`, {
+    params: { threshold }
   });
   return response.data;
 };
 
-export const listFiles = async (): Promise<FileItem[]> => {
-  const response = await api.get('/files');
-  return response.data;
-};
-
-export const searchFiles = async (query: string): Promise<FileItem[]> => {
-  const response = await api.get('/files/search', {
-    params: { q: query },
+export const calculateSimilarityMatrix = async (
+  fileIds: string[] = [],
+  threshold: number = 0.5
+): Promise<Record<string, SimilarDocument[]>> => {
+  const response = await axios.post(`${API_BASE_URL}/api/similarity/calculate`, {
+    file_ids: fileIds,
+    threshold
   });
   return response.data;
 };
 
-export const getFile = async (fileId: string): Promise<FileItem> => {
-  const response = await api.get(`/files/${fileId}`);
+export const getDocumentSimilarities = async (fileId: string): Promise<SimilarDocument[]> => {
+  const response = await axios.get(`${API_BASE_URL}/api/similarity/${fileId}`);
   return response.data;
 };
 
-export const removeFile = async (fileId: string): Promise<void> => {
-  await api.delete(`/files/${fileId}`);
-};
-
-// Content Extraction APIs
-export const searchContent = async (request: SearchRequest): Promise<SearchResponse> => {
-  const response = await api.post('/content/search', request);
+export const calculateDocumentSimilarities = async (fileId: string): Promise<SimilarDocument[]> => {
+  const response = await axios.post(`${API_BASE_URL}/api/similarity/${fileId}/calculate`);
   return response.data;
 };
 
-export const getExtractedContent = async (fileId: number): Promise<ExtractedContent> => {
-  const response = await api.get(`/content/extracted/${fileId}`);
+// Search API functions
+export const searchContent = async (query: string): Promise<{results: SearchResult[]}> => {
+  const response = await axios.get(`${API_BASE_URL}/api/search`, {
+    params: { q: query }
+  });
   return response.data;
 };
 
-export const triggerContentExtraction = async (
-  request: ContentExtractionRequest,
-): Promise<ExtractionTask> => {
-  const response = await api.post('/content/extract', request);
+// Tag API functions
+export const getTags = async (): Promise<AITag[]> => {
+  const response = await axios.get(`${API_BASE_URL}/api/tags`);
   return response.data;
 };
 
-export const getExtractionTask = async (taskId: string): Promise<ExtractionTask> => {
-  const response = await api.get(`/content/tasks/${taskId}`);
+export const createTag = async (tagData: TagCreationData): Promise<AITag> => {
+  const response = await axios.post(`${API_BASE_URL}/api/tags`, {
+    ...tagData,
+    source: tagData.source || 'manual',
+    confidence: tagData.confidence || 1.0
+  });
   return response.data;
 };
 
-export const retryExtraction = async (fileId: number): Promise<ExtractionTask> => {
-  const response = await api.post(`/content/retry/${fileId}`);
+export const updateTag = async (id: string, tag: Partial<AITag>): Promise<AITag> => {
+  const response = await axios.put(`${API_BASE_URL}/api/tags/${id}`, tag);
   return response.data;
 };
 
-export const getProcessingStatus = async (): Promise<ProcessingStatus[]> => {
-  const response = await api.get('/content/processing-status');
+export const deleteTag = async (id: string): Promise<void> => {
+  await axios.delete(`${API_BASE_URL}/api/tags/${id}`);
+};
+
+// AI Processing API functions
+export const generateTags = async (fileId: string, model?: string): Promise<AITag[]> => {
+  const response = await axios.post(`${API_BASE_URL}/api/ai/tags/${fileId}`, { model });
   return response.data;
 };
 
-export const getFileContent = async (fileId: number): Promise<string> => {
-  const response = await api.get(`/content/file/${fileId}/content`);
+export const generateSummary = async (fileId: string, model?: string, length?: string): Promise<AISummary> => {
+  const response = await axios.post(`${API_BASE_URL}/api/ai/summary/${fileId}`, { model, length });
+  return response.data;
+};
+
+export const getProcessingStatus = async (taskId: string = ''): Promise<ProcessingStatus> => {
+  const response = await axios.get(`${API_BASE_URL}/api/ai/status/${taskId}`);
+  return response.data;
+};
+
+export const getProcessingTasks = async (): Promise<ProcessingStatus[]> => {
+  const response = await axios.get(`${API_BASE_URL}/api/ai/tasks`);
+  return response.data;
+};
+
+export const getQueueStatus = async (): Promise<QueueStatus> => {
+  const response = await axios.get(`${API_BASE_URL}/api/ai/dashboard/queue-status`);
+  return response.data;
+};
+
+export const getModelPerformance = async (): Promise<{
+  summary_models: Record<string, { avg_time: number; success_rate: number }>;
+  tagging_models: Record<string, { avg_time: number; success_rate: number }>;
+}> => {
+  const response = await axios.get(`${API_BASE_URL}/api/ai/dashboard/model-performance`);
   return response.data;
 };

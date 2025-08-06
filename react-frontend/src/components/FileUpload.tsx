@@ -116,15 +116,51 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFilesUploaded, maxFiles, acce
   const getFileIcon = (fileName: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase();
     switch (extension) {
+      // Documents
       case 'pdf':
         return '📄';
       case 'doc':
       case 'docx':
         return '📝';
+      case 'xls':
+      case 'xlsx':
+        return '📊';
+      case 'ppt':
+      case 'pptx':
+        return '📑';
       case 'txt':
+      case 'md':
         return '📃';
+      
+      // Images
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'svg':
+      case 'webp':
+        return '🖼️';
+      
+      // Archives
+      case 'zip':
+      case 'rar':
+      case 'tar':
+      case 'gz':
+      case '7z':
+        return '🗜️';
+      
+      // Code
+      case 'js':
+      case 'ts':
+      case 'py':
+      case 'json':
+      case 'xml':
+      case 'html':
+      case 'css':
+        return '💻';
+      
       default:
-        return '📄';
+        return '📁';
     }
   };
 
@@ -168,7 +204,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFilesUploaded, maxFiles, acce
               }
             </p>
             <p className="text-small text-muted">
-              Supports: {accept.join(', ')} • Max {maxFiles} files • Up to 50MB each
+              Supports: PDF, Word, Excel, PowerPoint, Images, Archives, Code • Max {maxFiles} files • Up to 50MB each
             </p>
           </div>
 

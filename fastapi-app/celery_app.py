@@ -5,7 +5,10 @@ celery_app = Celery(
     "filemanager",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["fastapi-app.tasks.content_extraction"],
+    include=[
+        "fastapi-app.tasks.content_extraction",
+        "fastapi-app.tasks.ai_processing"
+    ],
 )
 
 celery_app.conf.update(
@@ -20,6 +23,28 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
     result_expires=3600,  # 1 hour
+    task_routes={
+        'fastapi-app.tasks.ai_processing.generate_summary_task': {
+            'queue': 'ai_processing',
+            'priority': 5
+        },
+        'fastapi-app.tasks.ai_processing.auto_tag_task': {
+            'queue': 'ai_processing',
+            'priority': 5
+        },
+        'fastapi-app.tasks.ai_processing.process_batch_ai_task': {
+            'queue': 'ai_batch',
+            'priority': 3
+        },
+    },
+    task_annotations={
+        'fastapi-app.tasks.ai_processing.*': {
+            'max_retries': 3,
+            'retry_backoff': True,
+            'retry_backoff_max': 600,
+            'retry_jitter': True
+        }
+    },
     beat_schedule={
         "cleanup-failed-tasks": {
             "task": "fastapi-app.tasks.content_extraction.cleanup_failed_tasks",

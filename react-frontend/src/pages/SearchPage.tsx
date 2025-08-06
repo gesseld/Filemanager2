@@ -1,23 +1,90 @@
 import React, { useState } from 'react';
+import {
+  SearchResponse,
+  SearchRequest,
+  SemanticSearchResult
+} from '../types/content-extraction';
+import { semanticSearch } from '../services/api';
+import { FileItem } from '../types/file';
+import { searchContent } from '../services/api';
 
 const SearchPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+
+  const [searchResults, setSearchResults] = useState<SearchResponse>({
+    results: [],
+    total: 0,
+    query: '',
+    limit: 10,
+    offset: 0
+  });
+  const [searchIn, setSearchIn] = useState<'name' | 'content' | 'both'>('both');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isSearching, setIsSearching] = useState(false);
+  const [useSemantic, setUseSemantic] = useState(false);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
     setIsSearching(true);
-    // Simulate search delay
-    setTimeout(() => {
-      setSearchResults([]);
+    try {
+      let response;
+      if (useSemantic) {
+        response = await semanticSearch(searchQuery, 10);
+      } else {
+        response = await searchContent({
+          query: searchQuery,
+          search_content: searchIn !== 'name',
+          limit: 10
+        });
+      }
+      setSearchResults(response);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setSearchResults({
+        results: [],
+        total: 0,
+        query: searchQuery,
+        limit: 10,
+        offset: 0
+      });
+    } finally {
       setIsSearching(false);
-    }, 1000);
+    }
   };
 
   const quickSearchTerms = ['contracts', 'invoices', 'reports', 'presentations', 'meeting notes'];
+
+  const highlightText = (text: string, highlights: { start: number; end: number }[]) => {
+    if (!highlights || highlights.length === 0) return text;
+    
+    const parts = [];
+    let lastPos = 0;
+    
+    highlights.forEach((hl, i) => {
+      // Add text before highlight
+      if (hl.start > lastPos) {
+        parts.push(text.slice(lastPos, hl.start));
+      }
+      
+      // Add highlighted text
+      parts.push(
+        <mark key={i} style={{ backgroundColor: '#ffeb3b', padding: '0 2px' }}>
+          {text.slice(hl.start, hl.end)}
+        </mark>
+      );
+      
+      lastPos = hl.end;
+    });
+    
+    // Add remaining text
+    if (lastPos < text.length) {
+      parts.push(text.slice(lastPos));
+    }
+    
+    return parts;
+  };
 
   return (
     <div style={{ padding: '20px' }}>
@@ -85,11 +152,49 @@ const SearchPage: React.FC = () => {
             </button>
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input type="checkbox" id="searchContent" />
-            <label htmlFor="searchContent" style={{ fontSize: '14px', color: '#6b7280' }}>
-              Search within document content (semantic search)
-            </label>
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px' }}>
+                Search In:
+              </label>
+              <select
+                value={searchIn}
+                onChange={(e) => setSearchIn(e.target.value as any)}
+                style={{ padding: '8px', borderRadius: '4px' }}
+                disabled={useSemantic}
+              >
+                <option value="both">Filename & Content</option>
+                <option value="name">Filename Only</option>
+                <option value="content">Content Only</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={useSemantic}
+                  onChange={() => setUseSemantic(!useSemantic)}
+                />
+                Semantic Search
+              </label>
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px' }}>
+                Filter by Status:
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{ padding: '8px', borderRadius: '4px' }}
+              >
+                <option value="all">All Statuses</option>
+                <option value="completed">Completed</option>
+                <option value="processing">Processing</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
           </div>
         </form>
 
@@ -152,7 +257,7 @@ const SearchPage: React.FC = () => {
                 <div style={{ fontSize: '32px', marginBottom: '16px' }}>🔄</div>
                 <p>Searching through your documents...</p>
               </div>
-            ) : searchResults.length === 0 ? (
+            ) : searchResults.results.length === 0 ? (
               <div style={{ 
                 textAlign: 'center', 
                 padding: '48px',
@@ -174,8 +279,51 @@ const SearchPage: React.FC = () => {
                 </p>
               </div>
             ) : (
-              <div>
-                {/* Results would be displayed here */}
+              <div style={{ marginTop: '16px' }}>
+                {searchResults.results.map((result) => (
+                  <div key={result.file_id} style={{
+                    marginBottom: '16px',
+                    padding: '16px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h4 style={{ margin: '0 0 8px 0' }}>{result.file_name}</h4>
+                      {result.score && (
+                        <span style={{
+                          display: 'inline-block',
+                          backgroundColor: '#f3f4f6',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '14px'
+                        }}>
+                          {useSemantic ? 'Similarity' : 'Relevance'}: {(result.score * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                    
+                    {result.highlights && result.highlights.length > 0 ? (
+                      result.highlights.map((highlight, i) => (
+                        <div key={i} style={{
+                          marginTop: '8px',
+                          padding: '8px',
+                          backgroundColor: '#f9fafb',
+                          borderRadius: '4px'
+                        }}>
+                          {highlightText(highlight.text, highlight.positions)}
+                        </div>
+                      ))
+                    ) : result.content ? (
+                      <div style={{
+                        marginTop: '8px',
+                        color: '#6b7280',
+                        fontStyle: 'italic'
+                      }}>
+                        "{result.content.slice(0, 200)}..."
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             )}
           </div>

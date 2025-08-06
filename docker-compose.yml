@@ -121,6 +121,48 @@ services:
     networks:
       - app_network
 
+  ai-summarization:
+    build:
+      context: .
+      dockerfile: Dockerfile.ai-summarization
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./fastapi-app:/app
+    env_file:
+      - .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  auto-tagging:
+    build:
+      context: .
+      dockerfile: Dockerfile.auto-tagging
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./fastapi-app:/app
+    env_file:
+      - .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres-data:
 
