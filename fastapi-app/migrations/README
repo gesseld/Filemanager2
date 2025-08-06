@@ -1,0 +1,19 @@
+# Database Migrations
+
+This directory contains Alembic database migration scripts.
+
+## Creating New Migrations
+1. Make changes to your SQLAlchemy models
+2. Run: `alembic revision --autogenerate -m "description"`
+3. Review the generated migration script
+4. Apply with: `alembic upgrade head`
+
+## Important Files
+- `env.py`: Migration environment config
+- `versions/`: Contains individual migration scripts
+- `script.py.mako`: Migration template file
+
+## Configuration
+The database connection is configured in:
+- `alembic.ini` (for connection string)
+- `env.py` (for model imports and metadata)

@@ -1,0 +1,14 @@
+# Ignore the problematic directory
+react-frontend/FileManager-Prod/
+
+# Common ignores
+node_modules/
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.DS_Store
+dist/
+build/
+*.log

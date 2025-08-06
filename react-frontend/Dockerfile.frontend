@@ -1,0 +1,26 @@
+# Stage 1: Build the React app
+FROM node:18-alpine as builder
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package.json yarn.lock ./
+
+# Configure yarn cache and install dependencies
+RUN yarn config set network-timeout 600000 -g && \
+    yarn config set cache-folder /usr/local/share/.cache/yarn && \
+    yarn install --frozen-lockfile --verbose && \
+    yarn cache clean
+
+# Copy source files
+COPY . .
+
+# Build with Vite (creates dist directory)
+RUN yarn build
+
+# Stage 2: Serve the app using nginx
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

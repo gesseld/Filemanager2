@@ -1,0 +1,19 @@
+# Development stage
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package.json yarn.lock ./
+
+# Install dependencies
+RUN yarn install --frozen-lockfile
+
+# Copy source files
+COPY . .
+
+# Expose Vite port
+EXPOSE 5173
+
+# Start development server
+CMD ["yarn", "dev", "--host", "0.0.0.0"]
